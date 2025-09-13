@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bill Splitter — UPI QR</title>
+  <style>
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0; padding: 20px;
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #f1f5f9;
+    }
+    h1 {
+      text-align: center;
+      font-size: 26px;
+      margin-bottom: 20px;
+      color: #38bdf8;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 18px;
+      margin: 12px 0;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+      backdrop-filter: blur(10px);
+    }
+    label { display:block; margin-top:8px; font-size: 14px; }
+    input, select, button {
+      padding: 10px;
+      border-radius: 8px;
+      border: none;
+      margin-top: 6px;
+      font-size: 14px;
+    }
+    input, select {
+      width: 100%;
+      background: #0f172a;
+      color: #f1f5f9;
+      border: 1px solid #334155;
+    }
+    button {
+      background: #38bdf8;
+      color: #0f172a;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+      margin-top: 8px;
+    }
+    button:hover {
+      background: #0ea5e9;
+      transform: scale(1.03);
+    }
+    .row { display:flex; gap:8px; flex-wrap:wrap }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px }
+    @media(max-width:800px){ .grid{ grid-template-columns:1fr } }
+    .user-pill {
+      display:inline-flex; align-items:center;
+      padding:6px 12px;
+      border-radius:999px;
+      background:#38bdf8; color:#0f172a;
+      margin:6px; font-weight:500;
+    }
+    .list { margin-top:10px; font-size: 14px; }
+    .muted { color:#94a3b8; font-size:13px }
+    a { text-decoration: none; }
+
+    /* QR grid styles */
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-top: 12px;
+    }
+    .qr {
+      text-align: center;
+      padding: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      font-size: 13px;
+      width: 200px;
+      margin: auto;
+    }
+    .qr strong { display:block; margin-bottom:6px; }
+    .qr a {
+      display:inline-block;
+      margin-top:8px;
+      padding:6px 10px;
+      font-size:12px;
+      font-weight:500;
+      color:#0f172a;
+      background:#38bdf8;
+      border-radius:6px;
+      transition:0.2s;
+    }
+    .qr a:hover { background:#0ea5e9; }
+  </style>
+</head>
+<body>
+  <h1>⚡ Smart Bill Splitter</h1>
+  <div class="card">
+    <div class="muted">Split common & individual expenses, then generate UPI QR codes so friends can pay instantly.</div>
+
+    <label>Collector (the one who paid):</label>
+    <input id="collectorName" placeholder="Name (e.g. Rahul)" />
+    <input id="collectorUpi" placeholder="UPI ID (e.g. rahul@oksbi)" />
+
+    <div class="grid">
+      <div class="card">
+        <h3>Add Member</h3>
+        <input id="memberName" placeholder="Member name" />
+        <button id="addMemberBtn">➕ Add</button>
+        <div id="members" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Common Expenses</h3>
+        <input id="commonDesc" placeholder="Description" />
+        <input id="commonAmt" placeholder="Amount (₹)" />
+        <button id="addCommonBtn">➕ Add</button>
+        <div id="commonList" class="list"></div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Individual Expense</h3>
+        <select id="indMember"></select>
+        <input id="indDesc" placeholder="Item description" />
+        <input id="indAmt" placeholder="Amount (₹)" />
+        <button id="addIndBtn">➕ Add</button>
+        <div id="indList" class="list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Summary & QR</h3>
+        <div id="summary" class="list"></div>
+        <label>UPI Note</label>
+        <input id="upiNote" placeholder="Dinner at XYZ" />
+        <button id="calcBtn">⚡ Calculate & Generate QR</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="qrs" class="card"></div>
+
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    const members = [], common = [], individual = [];
+    const $ = id => document.getElementById(id);
+
+    function renderMembers(){
+      $('members').innerHTML = '';
+      $('indMember').innerHTML = '';
+      members.forEach(m=>{
+        $('members').innerHTML += `<span class="user-pill">${m}</span>`;
+        $('indMember').innerHTML += `<option value="${m}">${m}</option>`;
+      });
+    }
+
+    function renderCommon(){
+      $('commonList').innerHTML = common.map(c=>`${c.desc} — ₹${c.amt.toFixed(2)}`).join('<br>');
+    }
+    function renderInd(){
+      $('indList').innerHTML = individual.map(c=>`${c.member}: ${c.desc} — ₹${c.amt.toFixed(2)}`).join('<br>');
+    }
+
+    $('addMemberBtn').onclick = ()=>{
+      const name = $('memberName').value.trim();
+      if(!name) return;
+      if(members.includes(name)) return alert('Member exists');
+      members.push(name); $('memberName').value=''; renderMembers();
+    }
+    $('addCommonBtn').onclick = ()=>{
+      const desc = $('commonDesc').value.trim()||'Common';
+      const amt = parseFloat($('commonAmt').value);
+      if(isNaN(amt)||amt<=0) return;
+      common.push({desc,amt}); $('commonDesc').value=''; $('commonAmt').value=''; renderCommon();
+    }
+    $('addIndBtn').onclick = ()=>{
+      const member = $('indMember').value; if(!member) return;
+      const desc = $('indDesc').value.trim()||'Item';
+      const amt = parseFloat($('indAmt').value);
+      if(isNaN(amt)||amt<=0) return;
+      individual.push({member,desc,amt}); $('indDesc').value=''; $('indAmt').value=''; renderInd();
+    }
+
+    function calculateTotals(){
+      const totals={}; members.forEach(m=>totals[m]=0);
+      const commonTotal=common.reduce((s,c)=>s+c.amt,0);
+      const perCommon=members.length?commonTotal/members.length:0;
+      members.forEach(m=>totals[m]+=perCommon);
+      individual.forEach(it=>{totals[it.member]+=it.amt;});
+      return {totals,commonTotal,perCommon};
+    }
+
+    $('calcBtn').onclick=()=>{
+      const collectorName=$('collectorName').value.trim();
+      const collectorUpi=$('collectorUpi').value.trim();
+      if(!collectorName||!collectorUpi) return alert('Enter collector details');
+      const note=encodeURIComponent($('upiNote').value||'Bill Split');
+      const {totals,commonTotal,perCommon}=calculateTotals();
+
+      $('summary').innerHTML = `<strong>Common total:</strong> ₹${commonTotal.toFixed(2)} (₹${perCommon.toFixed(2)} each)<br>` +
+        Object.entries(totals).map(([m,v])=>`${m}: ₹${v.toFixed(2)}`).join('<br>');
+
+      $('qrs').innerHTML='<h3>UPI QR Codes</h3><div id="qrGrid" class="qr-grid"></div>';
+      Object.entries(totals).forEach(([m,v])=>{
+        const upi=`upi://pay?pa=${encodeURIComponent(collectorUpi)}&pn=${encodeURIComponent(collectorName)}&am=${v.toFixed(2)}&cu=INR&tn=${note}`;
+        const box=document.createElement('div'); 
+        box.className='qr';
+        box.innerHTML=`<strong>${m}</strong>₹${v.toFixed(2)}<div id="qr-${m}"></div><a href="${upi}" target="_blank">Open</a>`;
+        $('qrGrid').appendChild(box);
+        new QRCode(`qr-${m}`,{text:upi,width:160,height:160});
+      });
+    }
+  </script>
+</body>
+</html>
